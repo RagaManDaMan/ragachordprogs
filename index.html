@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raga Harmony Tool</title>
+    <style>
+        :root { --primary: #1e293b; --accent: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); padding: 20px; color: #334155; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; background: #f1f5f9; padding: 20px; border-radius: 8px; }
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        input, select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; }
+        .table-wrapper { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; }
+        th { background: var(--primary); color: white; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-family: 'Courier New', monospace; font-weight: 600; }
+        tr:hover { background-color: #f8fafc; }
+        .tag { background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="margin-top:0">Raga Transposer & Progression Generator</h2>
+    
+    <div class="controls">
+        <div class="input-group">
+            <label><strong>1. Select Key Center:</strong></label>
+            <select id="keySelect" onchange="analyze()"></select>
+        </div>
+        <div class="input-group">
+            <label><strong>2. Define Scale (1-12):</strong></label>
+            <input type="text" id="scaleInput" value="1,3,5,6,8,10,12" placeholder="e.g. 1,2,5,7,8" oninput="analyze()">
+        </div>
+        <div class="input-group">
+            <label><strong>3. Progression (e.g. 3-6-2-5-1):</strong></label>
+            <input type="text" id="progSequence" value="2-5-1" oninput="analyze()">
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table>
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const allNotes = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+
+    // Initialize Key Dropdown
+    const keySelect = document.getElementById('keySelect');
+    allNotes.forEach((note, i) => {
+        let opt = document.createElement('option');
+        opt.value = i;
+        opt.text = note;
+        keySelect.add(opt);
+    });
+
+    function getNoteName(semitonesFromC) {
+        return allNotes[semitonesFromC % 12];
+    }
+
+    function getChord(rootIdx, scale) {
+        const len = scale.length;
+        const rootPos = scale.indexOf(rootIdx);
+        
+        // Stack thirds based on scale indices
+        const third = scale[(rootPos + 2) % len];
+        const fifth = scale[(rootPos + 4) % len];
+        const seventh = scale[(rootPos + 6) % len];
+
+        const rootNote = (rootIdx);
+        const tInt = (third < rootIdx ? third + 12 : third) - rootIdx;
+        const fInt = (fifth < rootIdx ? fifth + 12 : fifth) - rootIdx;
+        const sInt = (seventh < rootIdx ? seventh + 12 : seventh) - rootIdx;
+
+        let name = getNoteName(rootNote);
+        if (tInt === 3 && fInt === 7) name += "m";
+        else if (tInt === 3 && fInt === 6) name += "dim";
+        else if (tInt === 4 && fInt === 8) name += "aug";
+        else if (tInt === 2 || tInt === 5) name += "sus";
+        
+        if (sInt === 10) name += "7";
+        else if (sInt === 11) name += "maj7";
+        else if (sInt === 9 && name.includes("dim")) name = name.replace("dim", "dim7");
+        
+        return name;
+    }
+
+    function analyze() {
+        const keyOffset = parseInt(document.getElementById('keySelect').value);
+        const scaleInput = document.getElementById('scaleInput').value.split(',').map(n => parseInt(n.trim()) - 1);
+        const sequence = document.getElementById('progSequence').value.split('-').map(Number);
+        
+        // Transpose the scale to the chosen key
+        const transposedScale = scaleInput.map(n => (n + keyOffset) % 12).sort((a,b) => a-b);
+        
+        const head = document.getElementById('tableHead');
+        const body = document.getElementById('tableBody');
+
+        // Header Logic
+        let headerHtml = `<tr><th>Degree</th><th>Note</th><th>Chord</th>`;
+        sequence.filter(s => s !== 1).forEach(s => {
+            headerHtml += `<th>Degree ${s} of Target</th>`;
+        });
+        head.innerHTML = headerHtml + `</tr>`;
+
+        // Row Logic
+        body.innerHTML = "";
+        transposedScale.forEach((note, i) => {
+            let row = `<tr><td><span class="tag">${i + 1}</span></td><td>${getNoteName(note)}</td><td>${getChord(note, transposedScale)}</td>`;
+            
+            sequence.forEach(step => {
+                if (step === 1) return;
+                const offsets = { 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11 };
+                const stepNote = (note + (offsets[step] || 0)) % 12;
+                let suffix = step === 5 ? "7" : (step === 2 ? "m7" : "maj7");
+                if (step === 7) suffix = "m7b5";
+                row += `<td style="color: #2563eb;">${getNoteName(stepNote)}${suffix}</td>`;
+            });
+            body.innerHTML += row + `</tr>`;
+        });
+    }
+
+    window.onload = analyze;
+</script>
+</body>
+</html>
